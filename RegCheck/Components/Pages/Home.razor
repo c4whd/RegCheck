@@ -1,0 +1,108 @@
+﻿@page "/"
+
+@attribute [StreamRendering]
+@inject IHttpClientFactory ClientFactory
+
+<PageTitle>MOT Checker</PageTitle>
+
+<EditForm Model="car" OnValidSubmit="Submit" FormName="CarRegistration">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+    <div style="margin-bottom: 40px">
+        <label>
+            Please enter the car registration:
+            <InputText @bind-Value="car!.Registration" />
+        </label>
+        <button type="submit">Submit</button>
+    </div>
+</EditForm>
+    
+@if (statusCode.Equals(HttpStatusCode.OK))
+    {
+    <div>
+        <table class="table" style="width:60%">
+                <tr>
+                    <th>Make </th>
+                    <td>@car?.Make</td>
+                </tr>
+                <tr>
+                    <th>Model</th>
+                    <td>@car?.Model</td>
+                </tr>
+                <tr>
+                    <th>Colour </th>
+                    <td>@car?.Colour</td>
+                </tr>
+                <tr>
+                    <th>MOT Expiry Date </th>
+                    <td>@car?.MOTExpiryDate</td>
+                </tr>
+                <tr>
+                    <th>Mileage At Last MOT </th>
+                    <td>@car?.MileageAtLastMOT</td>
+                </tr>
+            </table>
+    </div>
+    }
+else if(statusCode.Equals(HttpStatusCode.NotFound))
+{
+    <div>
+        <p>No records held for: @car?.Registration</p>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromForm]
+    public Car? car { get; set; }
+
+    public HttpStatusCode statusCode;
+
+    protected override void OnInitialized() => car ??= new();
+
+    protected async Task Submit()
+    {
+        if (car?.Registration is not null)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get,
+            $"https://beta.check-mot.service.gov.uk/trade/vehicles/mot-tests?registration={car.Registration}");
+            request.Headers.Add("x-api-key", "fZi8YcjrZN1cGkQeZP7Uaa4rTxua8HovaswPuIno");
+
+            var client = ClientFactory.CreateClient();
+
+            var response = await client.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                statusCode = response.StatusCode;
+                var jsonString = await response.Content.ReadAsStringAsync();
+                dynamic obj = JsonConvert.DeserializeObject(jsonString);
+                car.Make = obj.First.make;
+                car.Model = obj.First.model;
+                car.Colour = obj.First.primaryColour;
+                car.MOTExpiryDate = obj.First.motTests[0].expiryDate;
+                car.MileageAtLastMOT = obj.First.motTests[0].odometerValue + obj.First.motTests[0].odometerUnit;
+            }
+            else
+            {
+                statusCode = response.StatusCode;
+            }
+        }
+    }
+
+    public class Car
+    {
+        [Required]
+        [StringLength(7, MinimumLength = 1, ErrorMessage = "A valid UK license plate is between 1 and 7 characters")]
+        public string Registration { get; set; }
+
+        public string? Make { get; set; }
+
+        public string? Model { get; set; }
+
+        public string? Colour { get; set; }
+
+        public string? MOTExpiryDate { get; set; }
+
+        public string? MileageAtLastMOT { get; set; }
+    }
+}
